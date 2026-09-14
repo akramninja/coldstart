@@ -1,0 +1,65 @@
+# This file deliberately leaves the five defaults of article 1 alone:
+#   1. heap size                 -> JVM default (MaxRAMPercentage=25)
+#   2. server.tomcat.threads.max -> 200
+#   3. spring.jpa.open-in-view   -> true
+#   4. spring.task.execution.*   -> 8 threads, unbounded queue
+#   5. cache                     -> bounded Caffeine below; the "before" scenario switches to simple
+# Scenario files in ../scenarios change them from outside, the way a pod spec would.
+# At startup, the service logs the values the running beans actually have ("DEFAULTS IN EFFECT").
+
+spring:
+  application:
+    name: order-service
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/orders?reWriteBatchedInserts=true}
+    username: ${DB_USER:orders}
+    password: ${DB_PASSWORD:orders}
+  jpa:
+    hibernate:
+      # Flyway owns the schema.
+      ddl-auto: none
+  cache:
+    cache-names: products
+    caffeine:
+      spec: maximumSize=20000,expireAfterWrite=10m,recordStats
+
+server:
+  port: 8080
+  tomcat:
+    mbeanregistry:
+      # Publishes tomcat_threads_busy_threads, the Default 2 saturation signal. Off by default.
+      enabled: true
+
+management:
+  server:
+    # Scrapes never take a Tomcat worker from the measured port.
+    port: 9090
+  endpoints:
+    access:
+      default: none
+    web:
+      exposure:
+        include: health, info, metrics, prometheus, caches
+  endpoint:
+    health:
+      access: read-only
+    info:
+      access: read-only
+    metrics:
+      access: read-only
+    prometheus:
+      access: read-only
+    # Default 5 check: each cache's native "target" class.
+    caches:
+      access: read-only
+  metrics:
+    tags:
+      application: order-service
+    distribution:
+      percentiles-histogram:
+        # Buckets for histogram_quantile(). Off by default.
+        "[http.server.requests]": true
+        # The key is a prefix match: keep the in-flight requests meter bucket-free.
+        "[http.server.requests.active]": false
+        # How long requests wait for a database connection: the Default 3 symptom.
+        "[hikaricp.connections.acquire]": true

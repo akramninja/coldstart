@@ -1,0 +1,50 @@
+# Prometheus alerting rules for ColdStart article 1, "5 Spring Boot defaults that break under
+# Kubernetes limits". They fire on the signals that come before the incident.
+#
+# For a Kubernetes cluster, not the local lab: container_* series come from cAdvisor, and the rules
+# assume your scrape config adds namespace and pod labels to Actuator metrics.
+# Thresholds are starting points, not measured values.
+
+groups:
+  - name: spring-boot-defaults
+    rules:
+      # Default 2: average CPU usage hides it, throttling doesn't.
+      - alert: ContainerCpuThrottled
+        expr: |
+          sum by (namespace, pod, container) (rate(container_cpu_cfs_throttled_periods_total{container!=""}[5m]))
+            / sum by (namespace, pod, container) (rate(container_cpu_cfs_periods_total{container!=""}[5m])) > 0.25
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.pod }} is CPU-throttled in {{ $value | humanizePercentage }} of periods"
+
+      # Defaults 1, 4 and 5: the kernel kills on total container memory, heap and everything else.
+      # "> 0" skips containers without a memory limit, where the division would give +Inf.
+      - alert: ContainerMemoryNearLimit
+        expr: |
+          max by (namespace, pod, container) (container_memory_working_set_bytes{container!=""})
+            / max by (namespace, pod, container) (container_spec_memory_limit_bytes{container!=""} > 0) > 0.9
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.pod }} uses {{ $value | humanizePercentage }} of its memory limit"
+
+      # Default 3: requests waiting for a database connection.
+      - alert: HikariConnectionsPending
+        expr: max by (namespace, pod) (hikaricp_connections_pending) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.pod }} has requests waiting for a database connection"
+
+      # Default 4: work arriving faster than the async executor drains it.
+      - alert: AsyncQueueGrowing
+        expr: max by (namespace, pod) (executor_queued_tasks{name="applicationTaskExecutor"}) > 1000
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.pod }} holds {{ $value }} queued async tasks in its heap"

@@ -1,0 +1,100 @@
+# ColdStart lab: order-service, PostgreSQL, Prometheus, Grafana and k6. Guide: README.md.
+#
+#   docker compose --env-file scenarios/d3-osiv-before.env up -d --build
+#   docker compose --env-file scenarios/d3-osiv-before.env run --rm --no-deps k6 run -e PROFILE=osiv /scripts/defaults.js
+#
+# Grafana: http://localhost:3000   Prometheus: http://localhost:9091
+#
+# CPU isolation: order-service on CPUs 0-3, PostgreSQL on 4-5, Prometheus, Grafana and k6 on 6-7,
+# so neither the database nor the load generator competes for the cores being measured. `cpus` is
+# a quota inside that set: exactly what a Kubernetes CPU limit is. Needs 8 CPUs; otherwise set the
+# *_CPUSET variables in the scenario file.
+
+name: coldstart-lab
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    cpuset: ${DB_CPUSET:-4-5}
+    cpus: 2
+    mem_limit: 2g
+    environment:
+      POSTGRES_DB: orders
+      POSTGRES_USER: orders
+      POSTGRES_PASSWORD: orders
+    command: ["postgres", "-c", "max_connections=200", "-c", "shared_buffers=512MB"]
+    volumes:
+      # Seeded by order-service on its first start, then reused by every scenario.
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orders -d orders"]
+      interval: 2s
+      retries: 30
+
+  order-service:
+    build: ./order-service
+    image: coldstart/order-service:1.0.0
+    container_name: order-service
+    cpuset: ${APP_CPUSET:-0-3}
+    cpus: ${APP_CPUS:-2}
+    mem_limit: ${APP_MEMORY:-2g}
+    # No swap: past the limit the container is killed, as a pod would be.
+    memswap_limit: ${APP_MEMORY:-2g}
+    # A JVM that exits on OutOfMemoryError comes back, like a pod after a restart.
+    restart: on-failure
+    # Everything a scenario changes, Spring Boot properties included. No scenario, no start.
+    env_file:
+      - scenarios/${SCENARIO:?Start with --env-file scenarios/<scenario>.env}.env
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/orders?reWriteBatchedInserts=true
+    ports:
+      - "8080:8080"
+      - "9090:9090"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    cpuset: ${TOOLS_CPUSET:-6-7}
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=7d
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - promdata:/prometheus
+    ports:
+      # 9090 is order-service's management port.
+      - "9091:9090"
+
+  grafana:
+    image: grafana/grafana:12.1.0
+    cpuset: ${TOOLS_CPUSET:-6-7}
+    environment:
+      # Local lab only: anonymous admin, no login form.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/order-service-defaults.json
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+
+  # Load generator, only started by `docker compose run --rm --no-deps k6 run ...`, so it never
+  # recreates order-service. Options go through k6's `-e NAME=value`.
+  k6:
+    image: grafana/k6:1.1.0
+    profiles: ["load"]
+    cpuset: ${TOOLS_CPUSET:-6-7}
+    environment:
+      BASE_URL: http://order-service:8080
+    volumes:
+      - ./load:/scripts:ro
+
+volumes:
+  pgdata:
+  promdata:

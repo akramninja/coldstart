@@ -1,0 +1,50 @@
+# A starting point for a Spring Boot 4.1 service on Kubernetes.
+# From ColdStart article 1, "5 Spring Boot defaults that break under Kubernetes limits".
+# Every value is a starting point to confirm under load, not a universal answer.
+
+spring:
+  jpa:
+    # Default 3: no database connection held while the request does anything else.
+    # Expect LazyInitializationException where the web layer relied on hidden queries: fix those.
+    open-in-view: false
+  task:
+    execution:
+      pool:
+        # Default 4: a full queue throws TaskRejectedException. Decide what happens then.
+        # With spring.threads.virtual.enabled=true, use spring.task.execution.simple.concurrency-limit instead.
+        max-size: 16
+        queue-capacity: 500
+  cache:
+    caffeine:
+      # Default 5: every cache gets a size and an expiry. recordStats publishes the hit ratio.
+      # Needs com.github.ben-manes.caffeine:caffeine on the classpath.
+      spec: maximumSize=10000,expireAfterWrite=10m,recordStats
+
+server:
+  tomcat:
+    # Default 2: the thread count stays Spring Boot's on purpose. It depends on whether the service
+    # computes or waits, and only a load test tells. Publish the saturation signal instead.
+    mbeanregistry:
+      enabled: true
+
+management:
+  server:
+    # Scrapes never take a Tomcat worker thread.
+    port: 9090
+  metrics:
+    distribution:
+      percentiles-histogram:
+        "[http.server.requests]": true
+        # The key is a prefix match: keep the in-flight requests meter bucket-free.
+        "[http.server.requests.active]": false
+        # How long requests wait for a database connection.
+        "[hikaricp.connections.acquire]": true
+
+# Default 1 is not in this file: the heap belongs in the pod spec, next to the memory limit.
+#
+#   resources:
+#     requests: { cpu: "2", memory: 2Gi }
+#     limits:   { cpu: "4", memory: 2Gi }   # memory request = limit
+#   env:
+#     - name: JAVA_TOOL_OPTIONS             # replaces the image's value: repeat the flags you need
+#       value: "-XX:MaxRAMPercentage=70 -XX:+ExitOnOutOfMemoryError"

@@ -1,0 +1,41 @@
+# Incident 3: lunch peak, orders time out, CPU is idle. Read README.md first.
+#
+#   docker compose up -d --build        start the incident
+#   docker compose logs -f traffic      watch it
+#   docker compose up -d                after every change to the pod below
+
+name: coldstart-lab
+
+services:
+
+  # ── The pod. This is the only part you change. ──────────────────────────────────────────────
+  order-service:
+    extends: { file: ../../services.yaml, service: order-service }
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 2g
+    environment:
+      JAVA_OPTS_APPEND: -XX:MaxRAMPercentage=70
+      # Spring Boot properties go here as environment variables: server.port -> SERVER_PORT.
+  # ────────────────────────────────────────────────────────────────────────────────────────────
+
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  traffic:
+    extends: { file: ../../services.yaml, service: traffic }
+    command: ["run", "--quiet", "--no-summary", "-e", "INCIDENT=3", "/scripts/incident.js"]
+    depends_on: [order-service]
+
+  postgres:
+    extends: { file: ../../services.yaml, service: postgres }
+  prometheus:
+    extends: { file: ../../services.yaml, service: prometheus }
+  grafana:
+    extends: { file: ../../services.yaml, service: grafana }
+
+volumes:
+  pgdata:
+  promdata:

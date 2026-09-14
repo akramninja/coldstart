@@ -1,0 +1,170 @@
+{
+  "uid": "order-service-defaults",
+  "title": "order-service: 5 Spring Boot defaults",
+  "tags": ["coldstart", "spring-boot"],
+  "timezone": "utc",
+  "refresh": "5s",
+  "time": { "from": "now-30m", "to": "now" },
+  "schemaVersion": 41,
+  "editable": true,
+  "panels": [
+    { "id": 1, "type": "row", "title": "Traffic", "collapsed": false, "gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 } },
+    {
+      "id": 2, "type": "timeseries", "title": "p99 latency by endpoint (server side)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" }, "gridPos": { "x": 0, "y": 1, "w": 12, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.99, sum by (le, method, uri) (rate(http_server_requests_seconds_bucket{uri!~\"/actuator.*\"}[1m])))", "legendFormat": "{{method}} {{uri}}" }
+      ]
+    },
+    {
+      "id": 3, "type": "timeseries", "title": "Requests per second by endpoint and status",
+      "datasource": { "type": "prometheus", "uid": "prometheus" }, "gridPos": { "x": 12, "y": 1, "w": 12, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "refId": "A", "expr": "sum by (method, uri, status) (rate(http_server_requests_seconds_count{uri!~\"/actuator.*\"}[1m]))", "legendFormat": "{{method}} {{uri}} {{status}}" }
+      ]
+    },
+
+    { "id": 10, "type": "row", "title": "Default 1 · Heap at 25% of the pod", "collapsed": false, "gridPos": { "x": 0, "y": 9, "w": 24, "h": 1 } },
+    {
+      "id": 11, "type": "timeseries", "title": "Heap used vs max vs container memory",
+      "datasource": { "type": "prometheus", "uid": "prometheus" }, "gridPos": { "x": 0, "y": 10, "w": 8, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "refId": "A", "expr": "sum(jvm_memory_used_bytes{area=\"heap\"})", "legendFormat": "heap used" },
+        { "refId": "B", "expr": "sum(jvm_memory_max_bytes{area=\"heap\"} >= 0)", "legendFormat": "heap max" },
+        { "refId": "C", "expr": "cgroup_memory_usage_bytes", "legendFormat": "container memory" },
+        { "refId": "D", "expr": "cgroup_memory_limit_bytes", "legendFormat": "container limit" }
+      ]
+    },
+    {
+      "id": 12, "type": "timeseries", "title": "GC pause time per second",
+      "datasource": { "type": "prometheus", "uid": "prometheus" }, "gridPos": { "x": 8, "y": 10, "w": 8, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "refId": "A", "expr": "sum by (gc) (rate(jvm_gc_pause_seconds_sum[1m]))", "legendFormat": "{{gc}}" }
+      ]
+    },
+    {
+      "id": 13, "type": "timeseries", "title": "Live data after GC, and JVM restarts",
+      "datasource": { "type": "prometheus", "uid": "prometheus" }, "gridPos": { "x": 16, "y": 10, "w": 8, "h": 8 },
+      "fieldConfig": {
+        "defaults": { "unit": "bytes" },
+        "overrides": [ { "matcher": { "id": "byName", "options": "restarts (10 min)" }, "properties": [ { "id": "unit", "value": "short" }, { "id": "custom.axisPlacement", "value": "right" } ] } ]
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "refId": "A", "expr": "jvm_gc_live_data_size_bytes", "legendFormat": "live data after GC" },
+        { "refId": "B", "expr": "changes(process_start_time_seconds[10m])", "legendFormat": "restarts (10 min)" }
+      ]
+    },
+
+    { "id": 20, "type": "row", "title": "Default 2 · 200 Tomcat threads, whatever the CPU limit", "collapsed": false, "gridPos": { "x": 0, "y": 18, "w": 24, "h": 1 } },
+    {
+      "id": 21, "type": "timeseries", "title": "CPU used vs limit (cores)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" }, "gridPos": { "x": 0, "y": 19, "w": 8, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "refId": "A", "expr": "rate(cgroup_cpu_usage_seconds_total[1m])", "legendFormat": "used" },
+        { "refId": "B", "expr": "cgroup_cpu_limit_cores", "legendFormat": "limit" }
+      ]
+    },
+    {
+      "id": 22, "type": "timeseries", "title": "Throttled CFS periods",
+      "datasource": { "type": "prometheus", "uid": "prometheus" }, "gridPos": { "x": 8, "y": 19, "w": 8, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1 }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "refId": "A", "expr": "rate(cgroup_cpu_throttled_periods_total[1m]) / rate(cgroup_cpu_periods_total[1m])", "legendFormat": "throttled periods" }
+      ]
+    },
+    {
+      "id": 23, "type": "timeseries", "title": "Tomcat busy threads vs max",
+      "datasource": { "type": "prometheus", "uid": "prometheus" }, "gridPos": { "x": 16, "y": 19, "w": 8, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "refId": "A", "expr": "sum(tomcat_threads_busy_threads)", "legendFormat": "busy" },
+        { "refId": "B", "expr": "sum(tomcat_threads_config_max_threads)", "legendFormat": "max" }
+      ]
+    },
+
+    { "id": 30, "type": "row", "title": "Default 3 · open-in-view holds a connection", "collapsed": false, "gridPos": { "x": 0, "y": 27, "w": 24, "h": 1 } },
+    {
+      "id": 31, "type": "timeseries", "title": "Hikari connections: active, pending, max",
+      "datasource": { "type": "prometheus", "uid": "prometheus" }, "gridPos": { "x": 0, "y": 28, "w": 12, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "refId": "A", "expr": "sum(hikaricp_connections_active)", "legendFormat": "active" },
+        { "refId": "B", "expr": "sum(hikaricp_connections_pending)", "legendFormat": "pending" },
+        { "refId": "C", "expr": "sum(hikaricp_connections_max)", "legendFormat": "max" }
+      ]
+    },
+    {
+      "id": 32, "type": "timeseries", "title": "Connection acquire time p99",
+      "datasource": { "type": "prometheus", "uid": "prometheus" }, "gridPos": { "x": 12, "y": 28, "w": 12, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "s", "min": 0 }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.99, sum by (le) (rate(hikaricp_connections_acquire_seconds_bucket[1m])))", "legendFormat": "acquire p99" }
+      ]
+    },
+
+    { "id": 40, "type": "row", "title": "Default 4 · the @Async queue has no end", "collapsed": false, "gridPos": { "x": 0, "y": 36, "w": 24, "h": 1 } },
+    {
+      "id": 41, "type": "timeseries", "title": "applicationTaskExecutor: queued tasks and active threads",
+      "datasource": { "type": "prometheus", "uid": "prometheus" }, "gridPos": { "x": 0, "y": 37, "w": 12, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "refId": "A", "expr": "executor_queued_tasks{name=\"applicationTaskExecutor\"}", "legendFormat": "queued tasks" },
+        { "refId": "B", "expr": "executor_active_threads{name=\"applicationTaskExecutor\"}", "legendFormat": "active threads" }
+      ]
+    },
+    {
+      "id": 42, "type": "timeseries", "title": "Confirmations per second by outcome",
+      "datasource": { "type": "prometheus", "uid": "prometheus" }, "gridPos": { "x": 12, "y": 37, "w": 12, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "refId": "A", "expr": "sum by (outcome) (rate(coldstart_confirmations_total[1m]))", "legendFormat": "{{outcome}}" }
+      ]
+    },
+
+    { "id": 50, "type": "row", "title": "Default 5 · a cache that never evicts", "collapsed": false, "gridPos": { "x": 0, "y": 45, "w": 24, "h": 1 } },
+    {
+      "id": 51, "type": "timeseries", "title": "Entries in the products cache",
+      "datasource": { "type": "prometheus", "uid": "prometheus" }, "gridPos": { "x": 0, "y": 46, "w": 8, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "refId": "A", "expr": "coldstart_cache_entries{cache=\"products\"}", "legendFormat": "entries" }
+      ]
+    },
+    {
+      "id": 52, "type": "timeseries", "title": "Live data after GC",
+      "datasource": { "type": "prometheus", "uid": "prometheus" }, "gridPos": { "x": 8, "y": 46, "w": 8, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "min": 0 }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "refId": "A", "expr": "jvm_gc_live_data_size_bytes", "legendFormat": "live data after GC" }
+      ]
+    },
+    {
+      "id": 53, "type": "timeseries", "title": "Cache hit ratio (Caffeine only)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" }, "gridPos": { "x": 16, "y": 46, "w": 8, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1 }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(cache_gets_total{cache=\"products\", result=\"hit\"}[1m])) / sum(rate(cache_gets_total{cache=\"products\"}[1m]))", "legendFormat": "hit ratio" }
+      ]
+    }
+  ]
+}

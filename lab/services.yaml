@@ -1,0 +1,77 @@
+# Shared service definitions. Not started on its own: each incident's compose.yaml extends it.
+#
+# CPU isolation: order-service on CPUs 0-3, PostgreSQL on 4-5, Prometheus, Grafana and traffic on
+# 6-7, so neither the database nor the load generator competes for the cores being measured.
+# Needs 8 CPUs; otherwise change the cpuset lines below.
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    cpuset: "4-5"
+    cpus: 2
+    mem_limit: 2g
+    environment:
+      POSTGRES_DB: orders
+      POSTGRES_USER: orders
+      POSTGRES_PASSWORD: orders
+    command: ["postgres", "-c", "max_connections=200", "-c", "shared_buffers=512MB"]
+    volumes:
+      # Seeded by order-service on its first start (about a minute), then reused by every incident.
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orders -d orders"]
+      interval: 2s
+      retries: 30
+
+  order-service:
+    build: ./order-service
+    image: coldstart/order-service:1.0.0
+    container_name: order-service
+    cpuset: "0-3"
+    # A JVM that exits on OutOfMemoryError comes back, like a pod after a restart.
+    restart: on-failure
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/orders?reWriteBatchedInserts=true
+    ports:
+      - "8080:8080"
+      - "9090:9090"
+
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    cpuset: "6-7"
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=7d
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - promdata:/prometheus
+    ports:
+      # 9090 is order-service's management port.
+      - "9091:9090"
+
+  grafana:
+    image: grafana/grafana:12.1.0
+    cpuset: "6-7"
+    environment:
+      # Local lab only: anonymous admin, no login form.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/order-service-defaults.json
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+
+  # Production traffic that never stops, plus a one-line dashboard every 5 seconds.
+  # It keeps running while you change the pod and recreate order-service, like real users would.
+  traffic:
+    image: grafana/k6:1.1.0
+    cpuset: "6-7"
+    environment:
+      BASE_URL: http://order-service:8080
+      MANAGEMENT_URL: http://order-service:9090
+      K6_LOG_FORMAT: raw
+    volumes:
+      - ./load:/scripts:ro
