@@ -1,0 +1,14 @@
+# Repeatable: re-applied whenever the query changes. Editing this file is allowed, unlike changes/.
+databaseChangeLog:
+  - changeSet:
+      id: order-summary-view
+      author: orders-team
+      labels: "1.0"
+      runOnChange: true
+      changes:
+        - createView:
+            viewName: order_summary
+            replaceIfExists: true
+            selectQuery: >
+              SELECT o.id, o.status, o.total, o.created_at, c.email
+              FROM orders o JOIN customers c ON c.id = o.customer_id

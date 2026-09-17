@@ -1,0 +1,6 @@
+apiVersion: v2
+name: orders-api
+description: ColdStart Liquibase lab. orders-api with its migration Job as a pre-install/pre-upgrade hook (part 1).
+type: application
+version: 1.1.0
+appVersion: "1.1"

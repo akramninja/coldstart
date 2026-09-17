@@ -1,0 +1,44 @@
+spring:
+  application:
+    name: orders-api
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/orders}
+    username: ${DB_USER:orders}
+    password: ${DB_PASSWORD:orders}
+  jpa:
+    # Article 1, Default 3.
+    open-in-view: false
+    hibernate:
+      # Liquibase owns the schema. ChangelogTests checks the entities against it with "validate".
+      ddl-auto: none
+  liquibase:
+    change-log: classpath:/db/changelog/db.changelog-master.yaml
+    # The lab deploys "releases" by label: every changeset is labelled with the release that ships it.
+    # Same variable as the Liquibase CLI in the migration Job, so both always run the same changesets.
+    # Empty: every changeset.
+    label-filter: ${LIQUIBASE_COMMAND_LABEL_FILTER:}
+
+server:
+  port: 8080
+
+management:
+  server:
+    port: 9090
+  endpoints:
+    web:
+      exposure:
+        include: health, info, metrics, prometheus, liquibase
+  info:
+    env:
+      enabled: true
+  metrics:
+    tags:
+      application: orders-api
+    distribution:
+      percentiles-histogram:
+        "[http.server.requests]": true
+        "[http.server.requests.active]": false
+
+info:
+  release:
+    liquibase-label-filter: ${LIQUIBASE_COMMAND_LABEL_FILTER:all changesets}

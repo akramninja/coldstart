@@ -1,0 +1,10 @@
+# The migration Job's image (part 1): Liquibase plus this service's changelogs, from the same commit.
+#
+# Same Liquibase version as Spring Boot 4.1.1 manages, so the app, the tests, Maven and the Job agree.
+# Since Liquibase 5.0 the image ships without JDBC drivers: add the one you need with lpm.
+FROM liquibase/liquibase:5.0.3
+RUN lpm add postgresql --global
+
+# Copied under the working directory (/liquibase), so the changelog path is db/changelog/..., the same
+# path Spring Boot records from the classpath. The path is part of each changeset's identity (part 3).
+COPY src/main/resources/db /liquibase/db

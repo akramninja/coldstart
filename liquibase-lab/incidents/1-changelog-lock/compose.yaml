@@ -1,0 +1,68 @@
+# Incident 1: the Friday deploy that never finishes. Read README.md first.
+#
+#   docker compose up -d --build        start release 1.0
+#   docker compose logs -f traffic      watch it
+#   docker compose up -d                after every change below
+
+name: coldstart-liquibase
+
+# ── The release. Which changesets it ships, as a Liquibase label filter. ─────────────────────────
+# Your clone already contains every release's changesets. On a real team, deploying 1.1 means a new
+# image; here it means telling Liquibase which changesets exist. The pod and the Job read the same line.
+x-release: &release
+  LIQUIBASE_COMMAND_LABEL_FILTER: "1.0"
+# ────────────────────────────────────────────────────────────────────────────────────────────────
+
+x-dataset: &orders "10000000"
+
+services:
+
+  # ── The pod. ───────────────────────────────────────────────────────────────────────────────────
+  orders-api:
+    extends: { file: ../../services.yaml, service: orders-api }
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 1g
+    environment:
+      <<: *release
+      # startupProbe: periodSeconds 10 × failureThreshold 2. Not ready by then: the container is killed.
+      LAB_STARTUP_PROBE_SECONDS: "20"
+      # Spring Boot properties go here as environment variables: spring.liquibase.enabled -> SPRING_LIQUIBASE_ENABLED.
+    depends_on:
+      postgres: { condition: service_healthy }
+      db-migrate: { condition: service_completed_successfully }
+
+  # ── The migration Job. ─────────────────────────────────────────────────────────────────────────
+  db-migrate:
+    extends: { file: ../../services.yaml, service: db-migrate }
+    environment:
+      <<: *release
+      RUN_MIGRATION: "false"
+    depends_on:
+      postgres: { condition: service_healthy }
+  # ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  postgres:
+    extends: { file: ../../services.yaml, service: postgres }
+
+  seed:
+    extends: { file: ../../services.yaml, service: seed }
+    environment:
+      LAB_ORDERS: *orders
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  pgweb:
+    extends: { file: ../../services.yaml, service: pgweb }
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  traffic:
+    extends: { file: ../../services.yaml, service: traffic }
+    command: ["run", "--quiet", "--no-summary", "-e", "INCIDENT=1", "-e", "ORDERS=10000000", "/scripts/traffic.js"]
+    depends_on: [pgweb]
+
+volumes:
+  pgdata:

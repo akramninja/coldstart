@@ -1,0 +1,21 @@
+databaseChangeLog:
+  - changeSet:
+      id: 20260112-0930-create-customers
+      author: orders-team
+      labels: "1.0"
+      changes:
+        - createTable:
+            tableName: customers
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  constraints: { primaryKey: true, primaryKeyName: customers_pkey }
+              - column:
+                  name: email
+                  type: varchar(120)
+                  constraints: { nullable: false }
+              - column:
+                  name: full_name
+                  type: varchar(120)
+                  constraints: { nullable: false }

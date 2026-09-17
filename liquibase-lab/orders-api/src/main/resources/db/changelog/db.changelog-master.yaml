@@ -1,0 +1,11 @@
+# One logical change per file under changes/, named <timestamp>-<what>.yaml, never edited once released.
+# Views and functions live in repeatable/ with runOnChange. See part 3.
+databaseChangeLog:
+  - includeAll:
+      path: changes/
+      relativeToChangelogFile: true
+      errorIfMissingOrEmpty: true
+  - includeAll:
+      path: repeatable/
+      relativeToChangelogFile: true
+      errorIfMissingOrEmpty: false

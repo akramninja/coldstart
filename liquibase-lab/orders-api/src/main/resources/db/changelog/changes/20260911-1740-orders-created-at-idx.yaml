@@ -1,0 +1,14 @@
+# Release 1.1: the index behind the daily revenue report.
+# A plain CREATE INDEX, exactly as it went out on Friday in part 1. It blocks writes while it builds;
+# part 2 shows the CONCURRENTLY version.
+databaseChangeLog:
+  - changeSet:
+      id: 20260911-1740-orders-created-at-idx
+      author: orders-team
+      labels: "1.1"
+      changes:
+        - createIndex:
+            tableName: orders
+            indexName: orders_created_at_idx
+            columns:
+              - column: { name: created_at }

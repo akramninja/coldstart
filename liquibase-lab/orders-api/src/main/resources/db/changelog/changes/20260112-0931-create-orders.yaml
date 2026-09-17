@@ -1,0 +1,39 @@
+databaseChangeLog:
+  - changeSet:
+      id: 20260112-0931-create-orders
+      author: orders-team
+      labels: "1.0"
+      changes:
+        - createTable:
+            tableName: orders
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  constraints: { primaryKey: true, primaryKeyName: orders_pkey }
+              - column:
+                  name: customer_id
+                  type: bigint
+                  constraints:
+                    nullable: false
+                    foreignKeyName: orders_customer_id_fkey
+                    references: customers(id)
+              - column:
+                  name: status
+                  type: varchar(20)
+                  constraints: { nullable: false }
+              - column:
+                  name: total
+                  type: numeric(14, 2)
+                  constraints: { nullable: false }
+              - column:
+                  name: created_at
+                  type: timestamp with time zone
+                  constraints: { nullable: false }
+        - createIndex:
+            tableName: orders
+            indexName: orders_customer_id_idx
+            columns:
+              - column: { name: customer_id }

@@ -1,0 +1,19 @@
+replicaCount: 3
+
+image:
+  repository: registry.example.com/orders-api
+  migrationsRepository: registry.example.com/orders-api-migrations
+  # Both images are built from the same commit and share this tag.
+  tag: "1.1"
+
+database:
+  url: jdbc:postgresql://orders-db:5432/orders
+  # Created outside the chart (External Secrets, Sealed Secrets...): pre-install hooks run before the
+  # chart's own resources exist, so a Secret templated here would be missing on the first install.
+  migratorSecret: orders-db-migrator   # owns the tables, DDL rights
+  appSecret: orders-db-app             # SELECT, INSERT, UPDATE, DELETE only
+
+migration:
+  # Size for the slowest migration on production data. Keep helm's --timeout above it:
+  # `helm upgrade` waits for hooks with its own timeout, 5 minutes by default.
+  activeDeadlineSeconds: 900

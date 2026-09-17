@@ -1,0 +1,35 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-db-migrate
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-5"
+    # Successful Jobs are cleaned up; a failed one stays, with its logs, until the next release.
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 1
+  activeDeadlineSeconds: {{ .Values.migration.activeDeadlineSeconds }}
+  template:
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        # The Liquibase image declares its user by name, which runAsNonRoot can't verify. Its UID:
+        runAsUser: 1001
+      containers:
+        - name: liquibase
+          image: "{{ .Values.image.migrationsRepository }}:{{ .Values.image.tag }}"
+          args: ["update"]
+          env:
+            - name: LIQUIBASE_COMMAND_URL
+              value: {{ .Values.database.url | quote }}
+            - name: LIQUIBASE_COMMAND_USERNAME
+              valueFrom: { secretKeyRef: { name: {{ .Values.database.migratorSecret }}, key: username } }
+            - name: LIQUIBASE_COMMAND_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ .Values.database.migratorSecret }}, key: password } }
+            - name: LIQUIBASE_COMMAND_CHANGELOG_FILE
+              value: db/changelog/db.changelog-master.yaml
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { memory: 512Mi }

@@ -1,0 +1,96 @@
+# Shared service definitions. Not started on its own: each incident's compose.yaml extends it.
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    cpus: 2
+    mem_limit: 2g
+    environment:
+      POSTGRES_DB: orders
+      POSTGRES_USER: orders
+      POSTGRES_PASSWORD: orders
+    # Single-threaded index builds. A production database shares its CPUs with live traffic; a laptop's
+    # database has nothing else to do and would hide how long a CREATE INDEX really takes.
+    command: ["postgres", "-c", "max_parallel_maintenance_workers=0", "-c", "shared_buffers=512MB"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orders -d orders"]
+      interval: 2s
+      retries: 30
+
+  orders-api:
+    build: ./orders-api
+    image: coldstart/orders-api:lab
+    # A pod name, so the lock table shows what it would show on Kubernetes.
+    hostname: orders-api-7d9f8c6b5-x2kqp
+    # A killed JVM comes back, like a container restarted by the kubelet in the same pod.
+    restart: on-failure
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/orders
+      # How long a starting pod waits for someone else's lock. Liquibase's default is 5 minutes;
+      # 1 so you don't spend the lab waiting.
+      LIQUIBASE_CHANGELOG_LOCK_WAIT_TIME_IN_MINUTES: "1"
+    ports:
+      - "8080:8080"
+      - "9090:9090"
+
+  # The migration Job (part 1). Runs Liquibase once and exits.
+  db-migrate:
+    build:
+      context: ./orders-api
+      dockerfile: Dockerfile.migrations
+    image: coldstart/orders-api-migrations:lab
+    restart: "no"
+    environment:
+      LIQUIBASE_COMMAND_URL: jdbc:postgresql://postgres:5432/orders
+      LIQUIBASE_COMMAND_USERNAME: orders
+      LIQUIBASE_COMMAND_PASSWORD: orders
+      LIQUIBASE_COMMAND_CHANGELOG_FILE: db/changelog/db.changelog-master.yaml
+      LIQUIBASE_CHANGELOG_LOCK_WAIT_TIME_IN_MINUTES: "1"
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        if [ "$$RUN_MIGRATION" = "true" ]; then
+          exec liquibase update
+        fi
+        echo "Migration Job is off: Liquibase runs inside orders-api at startup (Spring Boot's default)."
+
+  # Production-sized data, loaded once, outside Liquibase: the rows a real table accumulates over months.
+  seed:
+    image: postgres:17-alpine
+    restart: "no"
+    environment:
+      PGHOST: postgres
+      PGUSER: orders
+      PGPASSWORD: orders
+      PGDATABASE: orders
+    volumes:
+      - ./seed:/seed:ro
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        until psql -qtAc 'SELECT 1 FROM orders LIMIT 0' > /dev/null 2>&1; do
+          echo "Waiting for release 1.0 to create the tables..."
+          sleep 3
+        done
+        psql -v ON_ERROR_STOP=1 -v orders="$$LAB_ORDERS" -f /seed/orders.sql
+
+  # SQL in the browser, and an HTTP API the dashboard uses to read the migration state.
+  # Local lab only: no password, bound to localhost.
+  pgweb:
+    image: sosedoff/pgweb:0.17.0
+    command: ["--url=postgres://orders:orders@postgres:5432/orders?sslmode=disable"]
+    ports:
+      - "127.0.0.1:8081:8081"
+
+  # Production traffic that never stops, plus a one-line dashboard every 5 seconds.
+  traffic:
+    image: grafana/k6:1.1.0
+    environment:
+      BASE_URL: http://orders-api:8080
+      MANAGEMENT_URL: http://orders-api:9090
+      PGWEB_URL: http://pgweb:8081
+      K6_LOG_FORMAT: raw
+    volumes:
+      - ./load:/scripts:ro
